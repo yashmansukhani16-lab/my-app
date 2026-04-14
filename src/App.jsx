@@ -895,6 +895,74 @@ const styles = `
   }
   .sl-routine-check.on { background:rgba(0,200,190,0.2); border-color:rgba(0,225,215,0.8); }
 
+  /* ── History panel ── */
+  .sl-history-btn {
+    font-family:'Orbitron',sans-serif; font-size:8px; font-weight:700; letter-spacing:1.5px;
+    color:rgba(0,160,220,0.6); background:rgba(0,80,160,0.08); border:1px solid rgba(0,140,220,0.22);
+    padding:4px 10px; cursor:pointer; transition:background 0.15s, color 0.15s, box-shadow 0.15s;
+    white-space:nowrap;
+  }
+  .sl-history-btn:hover { background:rgba(0,100,200,0.15); color:rgba(0,220,255,0.9); box-shadow:0 0 10px rgba(0,180,255,0.2); }
+
+  .sl-history-overlay {
+    position:fixed; inset:0; background:rgba(0,5,18,0.8); z-index:50;
+    display:flex; align-items:flex-end; justify-content:center;
+    animation:overlayIn 0.2s ease;
+  }
+  .sl-history-panel {
+    width:100%; max-width:560px; background:rgba(8,14,30,0.98);
+    border:1px solid rgba(0,160,255,0.28); border-bottom:none;
+    padding:20px 22px 32px; max-height:75vh; overflow-y:auto;
+    animation:panelUp 0.25s cubic-bezier(0.22,1,0.36,1);
+    clip-path:polygon(0 16px,16px 0,100% 0,100% 100%,0 100%);
+    scrollbar-width:thin; scrollbar-color:rgba(0,140,220,0.2) transparent;
+  }
+  .sl-history-header {
+    display:flex; align-items:center; justify-content:space-between; margin-bottom:18px;
+  }
+  .sl-history-title {
+    font-family:'Orbitron',sans-serif; font-size:13px; font-weight:700; letter-spacing:3px;
+    color:rgba(0,200,255,0.8); text-shadow:0 0 12px rgba(0,180,255,0.4);
+  }
+  .sl-history-close {
+    background:none; border:none; color:rgba(80,140,200,0.4); cursor:pointer; font-size:18px; line-height:1; transition:color 0.15s;
+  }
+  .sl-history-close:hover { color:rgba(255,100,100,0.8); }
+
+  .sl-history-empty {
+    text-align:center; padding:32px 0; font-family:'Orbitron',sans-serif;
+    font-size:10px; letter-spacing:2px; color:rgba(80,140,200,0.3);
+  }
+
+  .sl-history-day { margin-bottom:18px; }
+  .sl-history-date {
+    font-family:'Orbitron',sans-serif; font-size:10px; font-weight:700; letter-spacing:2px;
+    color:rgba(0,160,220,0.65); margin-bottom:8px; padding-bottom:5px;
+    border-bottom:1px solid rgba(0,120,200,0.12); display:flex; align-items:center; gap:8px;
+  }
+  .sl-history-score {
+    font-size:9px; font-weight:400; letter-spacing:1px; margin-left:auto;
+    color:rgba(0,140,200,0.45);
+  }
+  .sl-history-score b { color:rgba(0,200,255,0.7); }
+
+  .sl-history-task {
+    display:flex; align-items:center; gap:8px; padding:5px 8px; margin-bottom:4px;
+    background:rgba(0,60,120,0.05); border-left:2px solid;
+  }
+  .sl-history-task.done-task   { border-left-color:rgba(0,200,120,0.4); opacity:0.85; }
+  .sl-history-task.missed-task { border-left-color:rgba(180,60,60,0.3); opacity:0.55; }
+  .sl-history-icon { font-size:11px; flex-shrink:0; }
+  .sl-history-task-text {
+    font-family:'Rajdhani',sans-serif; font-size:13px; font-weight:500;
+    color:rgba(160,200,240,0.75); flex:1; letter-spacing:0.3px;
+  }
+  .sl-history-task.missed-task .sl-history-task-text { text-decoration:line-through; color:rgba(120,140,170,0.45); }
+  .sl-history-cat {
+    font-family:'Orbitron',sans-serif; font-size:7px; letter-spacing:1px;
+    color:rgba(80,130,180,0.4); flex-shrink:0;
+  }
+
   /* ── Mobile layout ≤ 480px ─────────────────────────────────────── */
   @media (max-width: 480px) {
 
@@ -1078,6 +1146,18 @@ function TaskRow({ task, isPending, appDay, popups, completing, editingId, editT
 // ── localStorage helpers ───────────────────────────────────────────────────
 const LS_KEY = "dailylog-v1";
 
+const HISTORY_LIMIT = 14; // days to keep
+
+function archiveDay(history, dateStr, tasks) {
+  const dayTasks = tasks.filter(t => t.date === dateStr);
+  if (!dayTasks.length) return history;
+  const snapshot = dayTasks.map(t => ({ text: t.text, done: t.done, category: t.category || "Routine" }));
+  const updated = { [dateStr]: snapshot, ...history };
+  // Trim to limit
+  const keys = Object.keys(updated).sort().reverse().slice(0, HISTORY_LIMIT);
+  return Object.fromEntries(keys.map(k => [k, updated[k]]));
+}
+
 function loadState(today) {
   try {
     const raw = localStorage.getItem(LS_KEY);
@@ -1091,8 +1171,10 @@ function loadState(today) {
       const newStreak   = completedYesterday ? (d.streak || 0) + 1 : 0;
       const newBest     = Math.max(d.bestStreak || 0, newStreak);
       const carriedTasks = (d.tasks || []).filter(t => !t.done);
+      const newHistory  = archiveDay(d.history || {}, savedDay, d.tasks || []);
       return { ...d, appDay: today, streak: newStreak, bestStreak: newBest,
-               tasks: [...carriedTasks, ...pickDailyTasks(today, 0, mode, count)], resetOffset: 0 };
+               tasks: [...carriedTasks, ...pickDailyTasks(today, 0, mode, count)],
+               history: newHistory, resetOffset: 0 };
     }
     return d;
   } catch (_) { return null; }
@@ -1104,7 +1186,6 @@ function saveState(state) {
 
 // ── Component ──────────────────────────────────────────────────────────────
 export default function App() {
-
   const today = toDateStr(new Date());
 
   // ── Load everything from localStorage once on mount
@@ -1136,6 +1217,8 @@ export default function App() {
   const [input,        setInput]       = useState("");
   const [isRoutineInput, setIsRoutineInput] = useState(false);
   const [routines,     setRoutines]    = useState(() => saved?.routines ?? []);
+  const [history,      setHistory]     = useState(() => saved?.history  ?? {});
+  const [showHistory,  setShowHistory] = useState(false);
   const [popups,       setPopups]      = useState([]);
   const [completing,   setCompleting]  = useState(new Set());
   const [levelUpMsg,   setLevelUpMsg]  = useState(null);
@@ -1170,8 +1253,8 @@ export default function App() {
 
   useEffect(() => {
     saveState({ appDay, totalXP, tasks, resetOffset, streak, bestStreak,
-                lastDoneDay, playerName, difficultyMode, onboardingDone, questsPerDay, allDoneDay, routines });
-  }, [appDay, totalXP, tasks, resetOffset, streak, bestStreak, lastDoneDay, playerName, difficultyMode, onboardingDone, questsPerDay, allDoneDay, routines]);
+                lastDoneDay, playerName, difficultyMode, onboardingDone, questsPerDay, allDoneDay, routines, history });
+  }, [appDay, totalXP, tasks, resetOffset, streak, bestStreak, lastDoneDay, playerName, difficultyMode, onboardingDone, questsPerDay, allDoneDay, routines, history]);
 
   const appDayRef = useRef(appDay);
   useEffect(() => { appDayRef.current = appDay; }, [appDay]);
@@ -1230,6 +1313,8 @@ export default function App() {
     });
     setResetOffset(0);
     setTasks(prev => {
+      // Archive before clearing
+      setHistory(h => archiveDay(h, appDay, prev));
       const carried = prev.filter(t => !t.done && !t.isRoutine);
       const freshRoutines = routines.map(r => makeRoutineTask(r, newDay));
       return [...freshRoutines, ...carried, ...pickDailyTasks(newDay, 0, difficultyMode, questsPerDay)];
@@ -1296,6 +1381,7 @@ export default function App() {
     setTasks(pickDailyTasks(appDay, 0, "mixed", 5));
     setDifficultyMode("mixed");
     setRoutines([]);
+    setHistory({});
     setQuestsPerDay(5);
     setOnboardingDone(false);
     setResetOffset(0);
@@ -1629,11 +1715,51 @@ export default function App() {
             <div className="sl-progress-bar">
               <div className="sl-progress-fill" style={{ width: `${questPct}%` }} />
             </div>
-            <button className="sl-reset-tasks-btn" onClick={resetTasks} title="Get a new set of tasks">
-              ↺ NEW SET
-            </button>
+            <button className="sl-history-btn" onClick={() => setShowHistory(true)}>📋 HISTORY</button>
+            <button className="sl-reset-tasks-btn" onClick={resetTasks} title="Get a new set of tasks">↺ NEW SET</button>
           </div>
         )}
+
+        {/* History overlay */}
+        {showHistory && (() => {
+          const days = Object.keys(history).sort().reverse();
+          const fmtDate = (ds) => {
+            const d = new Date(ds + "T00:00:00");
+            return d.toLocaleDateString("en-US", { month:"long", day:"numeric", weekday:"short" });
+          };
+          return (
+            <div className="sl-history-overlay" onClick={() => setShowHistory(false)}>
+              <div className="sl-history-panel" onClick={e => e.stopPropagation()}>
+                <div className="sl-history-header">
+                  <span className="sl-history-title">[ HISTORY ]</span>
+                  <button className="sl-history-close" onClick={() => setShowHistory(false)}>✕</button>
+                </div>
+                {days.length === 0 ? (
+                  <div className="sl-history-empty">NO HISTORY YET — COMPLETE A DAY FIRST</div>
+                ) : days.map(dateStr => {
+                  const dayTasks = history[dateStr];
+                  const done = dayTasks.filter(t => t.done).length;
+                  const total = dayTasks.length;
+                  return (
+                    <div key={dateStr} className="sl-history-day">
+                      <div className="sl-history-date">
+                        {fmtDate(dateStr)}
+                        <span className="sl-history-score"><b>{done}</b> / {total} done</span>
+                      </div>
+                      {dayTasks.map((t, i) => (
+                        <div key={i} className={`sl-history-task ${t.done ? "done-task" : "missed-task"}`}>
+                          <span className="sl-history-icon">{t.done ? "✔" : "✘"}</span>
+                          <span className="sl-history-task-text">{t.text}</span>
+                          <span className="sl-history-cat">{(t.category || "").toUpperCase()}</span>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Settings overlay */}
         {showSettings && (
